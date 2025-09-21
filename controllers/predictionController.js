@@ -50,7 +50,7 @@ export const getLeaderboard = catchAsync(async (req, res, next) => {
         { $match: matchFilter },
         { $group: { _id: '$userId', totalPoints: { $sum: '$pointsAwarded' } } },
         { $sort: { totalPoints: -1 } },
-        { $limit: 100 },
+        //{ $limit: 100 },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
         { $unwind: '$user' },
         { $lookup: { from: 'participants', localField: '_id', foreignField: 'userId', as: 'participant' } },
