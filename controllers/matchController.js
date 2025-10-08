@@ -113,9 +113,7 @@ export const enterResult = catchAsync(async (req, res, next) => {
     return next(new AppError('No match found with that ID', 404));
   }
 
-  if (match.status === 'Finished') {
-    return next(new AppError('Result for this match has already been entered.', 400));
-  }
+
 
   match.scoreA = scoreA;
   match.scoreB = scoreB;

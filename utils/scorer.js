@@ -17,6 +17,12 @@ export const calculateMatchPoints = async (matchId) => {
       return;
     }
 
+    // --- الخطوة الجديدة التي تم إضافتها ---
+    // إعادة تعيين (تصفير) كل النقاط السابقة لهذه المباراة قبل البدء في إعادة الحساب.
+    // هذا السطر حاسم لضمان أن تعديل النتيجة يعمل بشكل صحيح.
+    await Prediction.updateMany({ matchId: matchId }, { $set: { pointsAwarded: 0 } });
+    console.log(`Points reset for match ${matchId}. Starting recalculation...`);
+
     // 3. Find all correct predictions
     const correctPredictions = predictions.filter(
       p => p.predictedScoreA === match.scoreA && p.predictedScoreB === match.scoreB
