@@ -6,6 +6,7 @@ import AppError from '../utils/AppError.js';
 export const checkIfPredictionAllowed = catchAsync(async (req, res, next) => {
     // 1. نحن نهتم فقط بـ matchId القادم من الطلب
     const { matchId } = req.body;
+    console.log('--- SECURITY CHECK INITIATED ---'); // <-- السطر الجديد هنا
 
     if (!matchId) {
         return next(new AppError('Match ID is required to make a prediction.', 400));
