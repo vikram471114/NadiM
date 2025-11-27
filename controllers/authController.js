@@ -25,6 +25,7 @@ const prepareSafeParticipant = (user) => {
   
   const p = user.participant;
   const now = new Date().toISOString();
+  p.id = p._id.toString();
 
   // ---------------------------------------------------
   // حقن البيانات الشامل (تغطية كل الثغرات)
