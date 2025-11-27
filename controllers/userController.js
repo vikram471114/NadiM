@@ -24,6 +24,7 @@ const sanitizeUser = (userDoc) => {
 
   const p = user.participant;
   const now = new Date().toISOString();
+  p.id = p._id.toString();
 
   // ---------------------------------------------------
   // حقن البيانات (تغطية كل الاحتمالات)
