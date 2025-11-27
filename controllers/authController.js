@@ -14,6 +14,12 @@ const createAndSendToken = (user, statusCode, res) => {
 
   // Remove password from the output
   user.password = undefined;
+  if (!user.participant) {
+    user.participant = {
+      _id: '0',
+      name: 'غير محدد',
+    };
+  }
 
   res.status(statusCode).json({
     status: 'success',
@@ -58,6 +64,12 @@ export const getMe = catchAsync(async (req, res, next) => {
 
   if (!currentUser) {
     return next(new AppError('المستخدم غير موجود.', 404));
+  }
+  if (!currentUser.participant) {
+    currentUser.participant = {
+      _id: '0',
+      name: 'غير محدد',
+    };
   }
   
   res.status(200).json({
