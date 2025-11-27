@@ -10,14 +10,13 @@ const signToken = (id) => {
 };
 
 // ============================================================
-// ✅ دالة التنظيف (Auth Sanitizer)
+// ✅ دالة التنظيف الشاملة (Auth Sanitizer + Root Injection)
 // ============================================================
 const prepareSafeParticipant = (userDoc) => {
-  // 1. تحويل مستند المونجو إلى كائن JS عادي (مهم جداً لكسر قيود المونجو)
-  // نستخدم متغير جديد لضمان عدم التعديل على المستند الأصلي بشكل خاطئ
+  // 1. تحويل المستند لكائن عادي لفك ارتباط المونجو
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
-  // 2. إنشاء مشارك وهمي إذا لم يوجد
+  // 2. ضمان وجود كائن المشارك
   if (!user.participant) {
     user.participant = {
       _id: "000000000000000000000000",
@@ -30,73 +29,82 @@ const prepareSafeParticipant = (userDoc) => {
   const now = new Date().toISOString();
 
   // ---------------------------------------------------
-  // حقن البيانات الشامل (تغطية كل الثغرات)
+  // أ. تعبئة بيانات المشارك الداخلية
   // ---------------------------------------------------
-  
-  // تحويل IDs لنصوص
   p.id = (p._id || "000000000000000000000000").toString();
-  
-  // النصوص
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
   p.username = p.username || user.username || 'user';
   
-  // الاتصال
   p.phone = p.phone || '';
   p.mobile = p.mobile || '';
+  p.phoneNumber = p.phoneNumber || '';
   p.email = p.email || ''; 
 
-  // الموقع
   p.region = p.region || '';
   p.city = p.city || '';
   p.address = p.address || '';
   
-  // الوسائط
   p.image = p.image || '';
   p.avatar = p.avatar || '';
+  p.photo = p.image || '';
 
-  // الأرقام والمنطق
   p.gender = p.gender || 'male';
   p.age = p.age || 20;
   p.birthDate = p.birthDate || now;
+  
   p.balance = p.balance || 0;
   p.points = p.points || 0;
+  
   p.isVerified = true;
   p.isActive = true;
   p.status = 'active';
   
-  // التواريخ
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
-  // حفظ التعديلات
+  // حفظ التعديلات في المشارك
   user.participant = p;
 
-  // نسخ الإيميل للجذر
-  if (!user.email) user.email = p.email || '';
+  // ---------------------------------------------------
+  // ب. 🛑 النسخ للجذر (Root Injection) - الحل الحاسم 🛑
+  // ---------------------------------------------------
+  user.id = user._id.toString();
+  
+  // نسخ الحقول المهمة للخارج (User Level)
+  user.fullName = p.fullName;
+  user.name = p.fullName;
+  
+  user.phone = p.phone;
+  user.mobile = p.phone;
+  
+  user.image = p.image;
+  user.photo = p.image;
+  user.avatar = p.image;
+  
+  user.region = p.region;
+  user.city = p.city;
+  
+  // ضمان الإيميل في الجذر
+  user.email = user.email || p.email || '';
 
-  // 🛑 أهم نقطة: إرجاع الكائن المعدل
   return user;
 };
 
-// ============================================================
-// LOGIN
-// ============================================================
 const createAndSendToken = (userDoc, statusCode, res) => {
   const token = signToken(userDoc._id);
 
-  // 🛑 التعديل المصحح هنا: يجب استقبال القيمة المرجعة
-  // نقوم بتنظيف المستخدم وحفظ النسخة النظيفة في متغير
+  // 🛑 نطبق التنظيف ونحفظ النتيجة في متغير جديد
   const safeUser = prepareSafeParticipant(userDoc);
   
-  // إزالة كلمة المرور من النسخة النظيفة
+  // إزالة كلمة المرور
   safeUser.password = undefined;
 
   res.status(statusCode).json({
     status: 'success',
     token,
     data: {
-      user: safeUser, // ✅ نرسل النسخة النظيفة (safeUser) وليس الأصلية
+      user: safeUser, // إرسال النسخة الآمنة
     },
   });
 };
@@ -119,16 +127,10 @@ export const login = catchAsync(async (req, res, next) => {
   createAndSendToken(user, 200, res);
 });
 
-// ============================================================
-// LOGOUT
-// ============================================================
 export const logout = (req, res) => {
   res.status(200).json({ status: 'success', message: 'تم تسجيل الخروج بنجاح' });
 };
 
-// ============================================================
-// GET ME
-// ============================================================
 export const getMe = catchAsync(async (req, res, next) => {
   const currentUserDoc = await User.findById(req.user.id).populate('participant');
 
@@ -136,13 +138,13 @@ export const getMe = catchAsync(async (req, res, next) => {
     return next(new AppError('المستخدم غير موجود.', 404));
   }
 
-  // 🛑 التعديل المصحح هنا أيضاً
+  // 🛑 تطبيق التنظيف هنا أيضاً
   const safeUser = prepareSafeParticipant(currentUserDoc);
    
   res.status(200).json({
     status: 'success',
     data: {
-      user: safeUser, // ✅ نرسل النسخة النظيفة
+      user: safeUser,
     },
   });
 });
