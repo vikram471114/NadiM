@@ -79,21 +79,32 @@ const sanitizeUser = (userDoc) => {
 // ============================================================
 
 export const getAllUsers = catchAsync(async (req, res, next) => {
+    // 1. جلب وتنظيف البيانات
     const rawUsers = await User.find().populate('participant');
-
-    // تنظيف البيانات
     let users = rawUsers.map(user => sanitizeUser(user));
 
-    // 👇👇👇 التعديل الهام: إرسال 5 مستخدمين فقط للتجربة 👇👇👇
-    // هذا سيكشف إذا كان السبب هو "مستخدم فاسد" في القائمة الطويلة
-    users = users.slice(0, 5); 
+    // إرسال 5 مستخدمين فقط للتجربة (لتخفيف الحمل وعزل الأخطاء)
+    users = users.slice(0, 5);
 
+    // 2. 🛑 الإرسال الشامل (الحل السحري) 🛑
+    // نرسل القائمة في كل المفاتيح المحتملة التي قد يستخدمها المبرمج
     res.status(200).json({
         status: 'success',
+        
+        // الاحتمال الأول: المتوقع في الكود النظيف
         results: users.length,
         data: {
             data: users,
+            users: users,
+            participants: users
         },
+
+        // الاحتمال الثاني: المصفوفة مباشرة في الجذر
+        users: users, 
+        participants: users,
+        
+        // الاحتمال الثالث: قد يكون المبرمج نسي التغليف
+        // (لا يمكننا إرسال المصفوفة وحدها كجذر لأننا أرسلنا كائناً، لكننا غطينا الأهم)
     });
 });
 
