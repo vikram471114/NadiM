@@ -5,21 +5,63 @@ import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
+// ✅ دالة مساعدة لتنظيف المستخدم (تضيف بيانات وهمية لو ناقصة)
+const sanitizeUser = (userDoc) => {
+  // تحويل مستند المونجو إلى كائن عادي للتعديل عليه
+  const user = userDoc.toObject ? userDoc.toObject() : userDoc;
+
+  if (!user.participant) {
+    user.participant = {
+      _id: "000000000000000000000000",
+      userId: user._id,
+      name: 'غير محدد',
+      fullName: 'غير محدد', // مهم جداً
+      phone: '',            // قيمة فارغة تمنع الكراش
+      region: '',
+      email: '',
+      image: ''
+    };
+  }
+  return user;
+};
+
 // Get all users and populate participant data
 export const getAllUsers = catchAsync(async (req, res, next) => {
-    const users = await User.find().populate('participant');
+    const rawUsers = await User.find().populate('participant');
+
+    // ✅ التعديل هنا: نمر على كل المستخدمين ونصلح الناقص منهم
+    const users = rawUsers.map(user => sanitizeUser(user));
 
     res.status(200).json({
         status: 'success',
         results: users.length,
         data: {
-            data: users,
+            data: users, // نرسل القائمة النظيفة
         },
     });
 });
 
 // Get a single user
-export const getUser = factory.getOne(User, { path: 'participant' });
+// نحتاج لتعديل هذه أيضاً يدوياً لأن factory.getOne لا تدعم التعديل المباشر بسهولة
+// سنستبدلها بدالة مخصصة للأمان
+export const getUser = catchAsync(async (req, res, next) => {
+    let query = User.findById(req.params.id).populate('participant');
+    const doc = await query;
+
+    if (!doc) {
+      return next(new AppError('No document found with that ID', 404));
+    }
+
+    // ✅ إصلاح المستخدم الفردي
+    const safeUser = sanitizeUser(doc);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        data: safeUser
+      }
+    });
+});
 
 // Update user
 export const updateUser = catchAsync(async (req, res, next) => {
@@ -31,10 +73,14 @@ export const updateUser = catchAsync(async (req, res, next) => {
     
     Object.keys(filteredBody).forEach(key => filteredBody[key] === undefined && delete filteredBody[key]);
 
-    const updatedUser = await User.findByIdAndUpdate(req.params.id, filteredBody, {
+    // نستخدم findByIdAndUpdate ثم نجلب البيانات مرة أخرى للتأكد
+    const updatedUserRaw = await User.findByIdAndUpdate(req.params.id, filteredBody, {
         new: true,
         runValidators: true,
-    });
+    }).populate('participant');
+
+    // ✅ إصلاح البيانات المرتجعة
+    const updatedUser = sanitizeUser(updatedUserRaw);
 
     res.status(200).json({
         status: 'success',
@@ -61,11 +107,16 @@ export const createUser = catchAsync(async (req, res, next) => {
     }
 
     await session.commitTransaction();
-    newUser.password = undefined;
+    
+    // جلب المستخدم كاملاً مع المشارك لإرجاعه
+    const finalUserRaw = await User.findById(newUser._id).populate('participant');
+    const finalUser = sanitizeUser(finalUserRaw);
+    finalUser.password = undefined;
+
     res.status(201).json({
       status: 'success',
       data: {
-        user: newUser,
+        user: finalUser,
       },
     });
   } catch (error) {
