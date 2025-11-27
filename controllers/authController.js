@@ -10,11 +10,14 @@ const signToken = (id) => {
 };
 
 // ============================================================
-// ✅ دالة التنظيف والإنقاذ (Auth Sanitizer)
-// هذه الدالة تضمن وجود كل الحقول الممكنة لمنع الـ Crash
+// ✅ دالة التنظيف (Auth Sanitizer)
 // ============================================================
-const prepareSafeParticipant = (user) => {
-  // 1. إذا لم يكن هناك مشارك، ننشئ واحداً وهمياً
+const prepareSafeParticipant = (userDoc) => {
+  // 1. تحويل مستند المونجو إلى كائن JS عادي (مهم جداً لكسر قيود المونجو)
+  // نستخدم متغير جديد لضمان عدم التعديل على المستند الأصلي بشكل خاطئ
+  let user = userDoc.toObject ? userDoc.toObject() : userDoc;
+
+  // 2. إنشاء مشارك وهمي إذا لم يوجد
   if (!user.participant) {
     user.participant = {
       _id: "000000000000000000000000",
@@ -25,88 +28,75 @@ const prepareSafeParticipant = (user) => {
   
   const p = user.participant;
   const now = new Date().toISOString();
-  p.id = p._id.toString();
 
   // ---------------------------------------------------
   // حقن البيانات الشامل (تغطية كل الثغرات)
   // ---------------------------------------------------
-
-  // 1. النصوص والأسماء
+  
+  // تحويل IDs لنصوص
+  p.id = (p._id || "000000000000000000000000").toString();
+  
+  // النصوص
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
   p.username = p.username || user.username || 'user';
-  p.firstName = p.firstName || 'غير محدد';
-  p.lastName = p.lastName || 'غير محدد';
-  p.bio = p.bio || '';
-  p.about = p.about || '';
-  p.description = p.description || '';
-
-  // 2. الاتصال
+  
+  // الاتصال
   p.phone = p.phone || '';
-  p.mobile = p.mobile || '';       // مسمى شائع
-  p.phoneNumber = p.phoneNumber || ''; // مسمى شائع
+  p.mobile = p.mobile || '';
   p.email = p.email || ''; 
 
-  // 3. الموقع والعناوين
+  // الموقع
   p.region = p.region || '';
   p.city = p.city || '';
   p.address = p.address || '';
-  p.location = p.location || '';
-  p.street = p.street || '';
-  p.country = p.country || '';
   
-  // 4. الصور والوسائط (أخطر المسببات)
+  // الوسائط
   p.image = p.image || '';
-  p.imageUrl = p.image || '';
-  p.photo = p.image || '';
-  p.photoUrl = p.image || '';
   p.avatar = p.avatar || '';
-  p.cover = p.cover || '';
 
-  // 5. الأرقام، الجنس، والمنطق
-  p.gender = p.gender || 'male';    // 👈 مهم جداً
-  p.sex = p.gender || 'male';       // اسم بديل
+  // الأرقام والمنطق
+  p.gender = p.gender || 'male';
   p.age = p.age || 20;
-  p.birthDate = p.birthDate || now; // 👈 مهم جداً
-  p.dob = p.birthDate || now;
+  p.birthDate = p.birthDate || now;
   p.balance = p.balance || 0;
   p.points = p.points || 0;
-  p.isVerified = (p.isVerified !== undefined) ? p.isVerified : true;
-  p.isActive = (p.isActive !== undefined) ? p.isActive : true;
-  p.status = p.status || 'active';
+  p.isVerified = true;
+  p.isActive = true;
+  p.status = 'active';
   
-  // 6. التواريخ (أساسية)
+  // التواريخ
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
   // حفظ التعديلات
   user.participant = p;
 
-  // ✅ نسخ الإيميل للجذر (User Object) للأمان
-  if (!user.email) {
-    user.email = p.email || '';
-  }
+  // نسخ الإيميل للجذر
+  if (!user.email) user.email = p.email || '';
 
+  // 🛑 أهم نقطة: إرجاع الكائن المعدل
   return user;
 };
 
 // ============================================================
 // LOGIN
 // ============================================================
-const createAndSendToken = (user, statusCode, res) => {
-  const token = signToken(user._id);
+const createAndSendToken = (userDoc, statusCode, res) => {
+  const token = signToken(userDoc._id);
 
-  // إخفاء كلمة المرور
-  user.password = undefined;
+  // 🛑 التعديل المصحح هنا: يجب استقبال القيمة المرجعة
+  // نقوم بتنظيف المستخدم وحفظ النسخة النظيفة في متغير
+  const safeUser = prepareSafeParticipant(userDoc);
   
-  // ✅ تطبيق التنظيف الشامل قبل الإرسال
-  prepareSafeParticipant(user);
+  // إزالة كلمة المرور من النسخة النظيفة
+  safeUser.password = undefined;
 
   res.status(statusCode).json({
     status: 'success',
     token,
     data: {
-      user,
+      user: safeUser, // ✅ نرسل النسخة النظيفة (safeUser) وليس الأصلية
     },
   });
 };
@@ -114,12 +104,10 @@ const createAndSendToken = (user, statusCode, res) => {
 export const login = catchAsync(async (req, res, next) => {
   const { username, password } = req.body;
 
-  // 1) التحقق من وجود البيانات
   if (!username || !password) {
     return next(new AppError('يرجى تقديم اسم المستخدم وكلمة المرور', 400));
   }
 
-  // 2) البحث عن المستخدم وجلب المشارك
   const user = await User.findOne({ username: username.toLowerCase() })
     .select('+password')
     .populate('participant');
@@ -128,7 +116,6 @@ export const login = catchAsync(async (req, res, next) => {
     return next(new AppError('اسم المستخدم أو كلمة المرور غير صحيحة', 401));
   }
 
-  // 3) إرسال التوكن والبيانات
   createAndSendToken(user, 200, res);
 });
 
@@ -140,23 +127,22 @@ export const logout = (req, res) => {
 };
 
 // ============================================================
-// GET ME (استعادة الجلسة)
+// GET ME
 // ============================================================
 export const getMe = catchAsync(async (req, res, next) => {
-  // المستخدم قادم من الـ Middleware
-  const currentUser = await User.findById(req.user.id).populate('participant');
+  const currentUserDoc = await User.findById(req.user.id).populate('participant');
 
-  if (!currentUser) {
+  if (!currentUserDoc) {
     return next(new AppError('المستخدم غير موجود.', 404));
   }
 
-  // ✅ تنظيف البيانات هنا أيضاً (مهم جداً عند إعادة فتح التطبيق)
-  prepareSafeParticipant(currentUser);
+  // 🛑 التعديل المصحح هنا أيضاً
+  const safeUser = prepareSafeParticipant(currentUserDoc);
    
   res.status(200).json({
     status: 'success',
     data: {
-      user: currentUser,
+      user: safeUser, // ✅ نرسل النسخة النظيفة
     },
   });
 });
