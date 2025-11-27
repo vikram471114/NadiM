@@ -6,12 +6,11 @@ import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
 // ============================================================
-// ✅ دالة التنظيف الشاملة (مع تحويل الأرقام لنصوص)
+// ✅ دالة التنظيف (مع إرسال الأرقام كأرقام حقيقية)
 // ============================================================
 const sanitizeUser = (userDoc) => {
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
-  // ضمان وجود المشارك
   if (!user.participant) {
     user.participant = {
       _id: "000000000000000000000000",
@@ -24,7 +23,7 @@ const sanitizeUser = (userDoc) => {
   const now = new Date().toISOString();
   const defaultImg = "https://placehold.co/400x400/png";
 
-  // 1. تعبئة الحقول النصية
+  // 1. النصوص
   p.id = (p._id || "0").toString();
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
@@ -41,10 +40,11 @@ const sanitizeUser = (userDoc) => {
   p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
   p.photo = p.image;
 
-  // 3. تحويل الأرقام إلى نصوص (هام جداً للفلاتر)
-  p.age = (p.age || 20).toString();
-  p.balance = (p.balance || 0).toString();
-  p.points = (p.points || 0).toString();
+  // 3. 🛑 تصحيح الأرقام (إرسالها كـ int وليس String) 🛑
+  // هذا سيحل مشكلة type String is not subtype of int
+  p.age = Number(p.age) || 20;          // إرسال رقم 20
+  p.balance = Number(p.balance) || 0;   // إرسال رقم 0
+  p.points = Number(p.points) || 0;     // إرسال رقم 0
   
   p.gender = p.gender || 'male';
   p.isVerified = true;
@@ -54,13 +54,13 @@ const sanitizeUser = (userDoc) => {
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
-  // الكائنات الفرعية (لتجنب كراش الخصائص المتداخلة)
-  p.wallet = p.wallet || { balance: "0", currency: 'SAR' };
+  // الكائنات الفرعية
+  p.wallet = p.wallet || { balance: 0, currency: 'SAR' };
   p.subscription = p.subscription || { status: 'free', plan: 'basic' };
 
   user.participant = p;
 
-  // 4. النسخ للجذر (Root Injection)
+  // 4. النسخ للجذر (مع الأرقام الصحيحة)
   user.id = user._id.toString();
   user.fullName = p.fullName;
   user.name = p.fullName;
@@ -71,7 +71,7 @@ const sanitizeUser = (userDoc) => {
   user.avatar = p.image;
   user.email = user.email || p.email || '';
   
-  // نسخ القيم النصية للجذر
+  // نسخ الأرقام كأرقام
   user.age = p.age;
   user.balance = p.balance;
   user.points = p.points;
@@ -89,22 +89,17 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
     // تنظيف البيانات
     let users = rawUsers.map(user => sanitizeUser(user));
 
-    // إرسال 5 مستخدمين فقط (للتأكد)
+    // إرسال 5 مستخدمين فقط للتجربة
     users = users.slice(0, 5);
 
-    // 🛑 التغيير الجذري في الهيكلية هنا 🛑
-    // بدلاً من data.data المعقدة، نرسل المصفوفة مباشرة في data
-    // ونرسلها أيضاً في مفتاح users للاحتياط
     res.status(200).json({
         status: 'success',
         results: users.length,
-        
-        // الاحتمال الأكبر: التطبيق ينتظر قائمة مباشرة هنا
+        // إرسال المصفوفة مباشرة في data
         data: users, 
         
-        // احتمالات أخرى:
-        users: users,
-        participants: users
+        // مفاتيح احتياطية
+        users: users
     });
 });
 
@@ -113,7 +108,6 @@ export const getUser = catchAsync(async (req, res, next) => {
     const doc = await query;
     if (!doc) return next(new AppError('No document found', 404));
     
-    // نرسل المستخدم مباشرة دون تغليف زائد
     res.status(200).json({
         status: 'success',
         data: sanitizeUser(doc)
