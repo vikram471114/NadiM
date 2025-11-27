@@ -6,20 +6,25 @@ import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
 // ============================================================
-// ✅ دالة التنظيف وتحويل الأرقام لنصوص (Stringify Sanitizer)
+// ✅ دالة التنظيف الشاملة (مع تحويل الأرقام لنصوص)
 // ============================================================
 const sanitizeUser = (userDoc) => {
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
+  // ضمان وجود المشارك
   if (!user.participant) {
-    user.participant = { _id: "000000000000000000000000", userId: user._id, __v: 0 };
+    user.participant = {
+      _id: "000000000000000000000000",
+      userId: user._id,
+      __v: 0
+    };
   }
 
   const p = user.participant;
   const now = new Date().toISOString();
   const defaultImg = "https://placehold.co/400x400/png";
 
-  // 1. النصوص
+  // 1. تعبئة الحقول النصية
   p.id = (p._id || "0").toString();
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
@@ -36,11 +41,10 @@ const sanitizeUser = (userDoc) => {
   p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
   p.photo = p.image;
 
-  // 3. 🛑 تحويل الأرقام إلى نصوص (هنا الحل) 🛑
-  // فلاتر ينهار إذا وضعنا رقم في Text widget
-  p.age = (p.age || 20).toString();          // "20"
-  p.balance = (p.balance || 0).toString();   // "0"
-  p.points = (p.points || 0).toString();     // "0"
+  // 3. تحويل الأرقام إلى نصوص (هام جداً للفلاتر)
+  p.age = (p.age || 20).toString();
+  p.balance = (p.balance || 0).toString();
+  p.points = (p.points || 0).toString();
   
   p.gender = p.gender || 'male';
   p.isVerified = true;
@@ -50,9 +54,13 @@ const sanitizeUser = (userDoc) => {
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
+  // الكائنات الفرعية (لتجنب كراش الخصائص المتداخلة)
+  p.wallet = p.wallet || { balance: "0", currency: 'SAR' };
+  p.subscription = p.subscription || { status: 'free', plan: 'basic' };
+
   user.participant = p;
 
-  // 4. النسخ للجذر مع تحويل الأرقام
+  // 4. النسخ للجذر (Root Injection)
   user.id = user._id.toString();
   user.fullName = p.fullName;
   user.name = p.fullName;
@@ -63,7 +71,7 @@ const sanitizeUser = (userDoc) => {
   user.avatar = p.image;
   user.email = user.email || p.email || '';
   
-  // نسخ القيم النصية للجذر أيضاً
+  // نسخ القيم النصية للجذر
   user.age = p.age;
   user.balance = p.balance;
   user.points = p.points;
@@ -78,22 +86,25 @@ const sanitizeUser = (userDoc) => {
 export const getAllUsers = catchAsync(async (req, res, next) => {
     const rawUsers = await User.find().populate('participant');
     
-    // تنظيف وتحويل لنصوص
+    // تنظيف البيانات
     let users = rawUsers.map(user => sanitizeUser(user));
 
-    // إرسال أول 5 فقط للتجربة
+    // إرسال 5 مستخدمين فقط (للتأكد)
     users = users.slice(0, 5);
 
+    // 🛑 التغيير الجذري في الهيكلية هنا 🛑
+    // بدلاً من data.data المعقدة، نرسل المصفوفة مباشرة في data
+    // ونرسلها أيضاً في مفتاح users للاحتياط
     res.status(200).json({
         status: 'success',
         results: users.length,
-        // نرسل المصفوفة في كل مكان محتمل
-        data: {
-            data: users,
-            users: users,
-            participants: users
-        },
-        users: users // احتمال أن التطبيق يقرأ من هنا مباشرة
+        
+        // الاحتمال الأكبر: التطبيق ينتظر قائمة مباشرة هنا
+        data: users, 
+        
+        // احتمالات أخرى:
+        users: users,
+        participants: users
     });
 });
 
@@ -101,15 +112,25 @@ export const getUser = catchAsync(async (req, res, next) => {
     let query = User.findById(req.params.id).populate('participant');
     const doc = await query;
     if (!doc) return next(new AppError('No document found', 404));
-    res.status(200).json({ status: 'success', data: { data: sanitizeUser(doc) } });
+    
+    // نرسل المستخدم مباشرة دون تغليف زائد
+    res.status(200).json({
+        status: 'success',
+        data: sanitizeUser(doc)
+    });
 });
 
 export const updateUser = catchAsync(async (req, res, next) => {
     const filteredBody = { username: req.body.username, role: req.body.role, isActive: req.body.isActive };
     Object.keys(filteredBody).forEach(key => filteredBody[key] === undefined && delete filteredBody[key]);
+    
     const updatedUserRaw = await User.findByIdAndUpdate(req.params.id, filteredBody, { new: true, runValidators: true }).populate('participant');
     if (!updatedUserRaw) return next(new AppError('No user found', 404));
-    res.status(200).json({ status: 'success', data: { user: sanitizeUser(updatedUserRaw) } });
+    
+    res.status(200).json({
+        status: 'success',
+        data: { user: sanitizeUser(updatedUserRaw) }
+    });
 });
 
 export const createUser = catchAsync(async (req, res, next) => {
@@ -127,7 +148,11 @@ export const createUser = catchAsync(async (req, res, next) => {
     const finalUserRaw = await User.findById(newUser._id).populate('participant');
     const finalUser = sanitizeUser(finalUserRaw);
     finalUser.password = undefined;
-    res.status(201).json({ status: 'success', data: { user: finalUser } });
+    
+    res.status(201).json({
+        status: 'success',
+        data: { user: finalUser }
+    });
   } catch (error) {
     await session.abortTransaction();
     next(error);
