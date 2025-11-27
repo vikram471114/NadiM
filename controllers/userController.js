@@ -6,13 +6,11 @@ import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
 // ============================================================
-// ✅ دالة التنظيف الشاملة (User Sanitizer + Root Injection)
+// ✅ دالة التنظيف (User Sanitizer + Image Fix)
 // ============================================================
 const sanitizeUser = (userDoc) => {
-  // 1. تحويل المستند لكائن عادي
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
-  // 2. ضمان وجود كائن المشارك
   if (!user.participant) {
     user.participant = {
       _id: "000000000000000000000000",
@@ -23,10 +21,10 @@ const sanitizeUser = (userDoc) => {
 
   const p = user.participant;
   const now = new Date().toISOString();
+  
+  // رابط صورة افتراضي
+  const defaultImg = "https://placehold.co/400x400/png";
 
-  // ---------------------------------------------------
-  // أ. تعبئة بيانات المشارك الداخلية
-  // ---------------------------------------------------
   p.id = (p._id || "000000000000000000000000").toString();
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
@@ -40,15 +38,16 @@ const sanitizeUser = (userDoc) => {
   p.city = p.city || '';
   p.address = p.address || '';
 
-  p.image = p.image || '';
-  p.avatar = p.avatar || '';
+  // 🛑 إصلاح الصور
+  p.image = (p.image && p.image.length > 5) ? p.image : defaultImg;
+  p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
 
   p.gender = p.gender || 'male';
   p.age = p.age || 20;
   p.birthDate = p.birthDate || now;
   
-  p.balance = p.balance || 0;
-  p.points = p.points || 0;
+  p.balance = p.balance || 0.0;
+  p.points = p.points || 0.0;
 
   p.isVerified = true;
   p.isActive = true;
@@ -59,9 +58,7 @@ const sanitizeUser = (userDoc) => {
 
   user.participant = p;
 
-  // ---------------------------------------------------
-  // ب. 🛑 النسخ للجذر (Root Injection) 🛑
-  // ---------------------------------------------------
+  // ب. النسخ للجذر
   user.id = user._id.toString();
   
   user.fullName = p.fullName;
@@ -87,7 +84,7 @@ const sanitizeUser = (userDoc) => {
 export const getAllUsers = catchAsync(async (req, res, next) => {
     const rawUsers = await User.find().populate('participant');
 
-    // تنظيف القائمة بالكامل
+    // تنظيف كل المستخدمين
     const users = rawUsers.map(user => sanitizeUser(user));
 
     res.status(200).json({
