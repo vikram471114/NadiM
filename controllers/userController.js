@@ -6,61 +6,53 @@ import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
 // ============================================================
-// ✅ دالة التنظيف الشاملة
+// ✅ دالة التنظيف وتحويل الأرقام لنصوص (Stringify Sanitizer)
 // ============================================================
 const sanitizeUser = (userDoc) => {
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
   if (!user.participant) {
-    user.participant = {
-      _id: "000000000000000000000000",
-      userId: user._id,
-      __v: 0
-    };
+    user.participant = { _id: "000000000000000000000000", userId: user._id, __v: 0 };
   }
 
   const p = user.participant;
   const now = new Date().toISOString();
-  
-  // صورة افتراضية
   const defaultImg = "https://placehold.co/400x400/png";
 
-  // تعبئة البيانات
-  p.id = (p._id || "000000000000000000000000").toString();
+  // 1. النصوص
+  p.id = (p._id || "0").toString();
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
   p.username = p.username || user.username || 'user';
-  
   p.phone = p.phone || '';
   p.mobile = p.mobile || '';
   p.email = p.email || ''; 
   p.region = p.region || '';
   p.city = p.city || '';
   p.address = p.address || '';
-  
-  // الصور
+
+  // 2. الصور
   p.image = (p.image && p.image.length > 5) ? p.image : defaultImg;
   p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
   p.photo = p.image;
 
+  // 3. 🛑 تحويل الأرقام إلى نصوص (هنا الحل) 🛑
+  // فلاتر ينهار إذا وضعنا رقم في Text widget
+  p.age = (p.age || 20).toString();          // "20"
+  p.balance = (p.balance || 0).toString();   // "0"
+  p.points = (p.points || 0).toString();     // "0"
+  
   p.gender = p.gender || 'male';
-  p.age = p.age || 20;
-  p.birthDate = p.birthDate || now;
-  p.balance = p.balance || 0.0;
-  p.points = p.points || 0.0;
   p.isVerified = true;
   p.isActive = true;
   p.status = 'active';
+
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
-  // الكائنات الفرعية (مهمة جداً)
-  p.wallet = p.wallet || { balance: 0, currency: 'SAR' };
-  p.subscription = p.subscription || { status: 'free', plan: 'basic' };
-
   user.participant = p;
 
-  // النسخ للجذر (Root Injection)
+  // 4. النسخ للجذر مع تحويل الأرقام
   user.id = user._id.toString();
   user.fullName = p.fullName;
   user.name = p.fullName;
@@ -70,6 +62,11 @@ const sanitizeUser = (userDoc) => {
   user.photo = p.image;
   user.avatar = p.image;
   user.email = user.email || p.email || '';
+  
+  // نسخ القيم النصية للجذر أيضاً
+  user.age = p.age;
+  user.balance = p.balance;
+  user.points = p.points;
 
   return user;
 };
@@ -79,32 +76,24 @@ const sanitizeUser = (userDoc) => {
 // ============================================================
 
 export const getAllUsers = catchAsync(async (req, res, next) => {
-    // 1. جلب وتنظيف البيانات
     const rawUsers = await User.find().populate('participant');
+    
+    // تنظيف وتحويل لنصوص
     let users = rawUsers.map(user => sanitizeUser(user));
 
-    // إرسال 5 مستخدمين فقط للتجربة (لتخفيف الحمل وعزل الأخطاء)
+    // إرسال أول 5 فقط للتجربة
     users = users.slice(0, 5);
 
-    // 2. 🛑 الإرسال الشامل (الحل السحري) 🛑
-    // نرسل القائمة في كل المفاتيح المحتملة التي قد يستخدمها المبرمج
     res.status(200).json({
         status: 'success',
-        
-        // الاحتمال الأول: المتوقع في الكود النظيف
         results: users.length,
+        // نرسل المصفوفة في كل مكان محتمل
         data: {
             data: users,
             users: users,
             participants: users
         },
-
-        // الاحتمال الثاني: المصفوفة مباشرة في الجذر
-        users: users, 
-        participants: users,
-        
-        // الاحتمال الثالث: قد يكون المبرمج نسي التغليف
-        // (لا يمكننا إرسال المصفوفة وحدها كجذر لأننا أرسلنا كائناً، لكننا غطينا الأهم)
+        users: users // احتمال أن التطبيق يقرأ من هنا مباشرة
     });
 });
 
