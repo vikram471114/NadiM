@@ -10,13 +10,11 @@ const signToken = (id) => {
 };
 
 // ============================================================
-// ✅ دالة التنظيف الشاملة (Auth Sanitizer + Root Injection)
+// ✅ دالة التنظيف (Auth Sanitizer + Image Fix)
 // ============================================================
 const prepareSafeParticipant = (userDoc) => {
-  // 1. تحويل المستند لكائن عادي لفك ارتباط المونجو
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
 
-  // 2. ضمان وجود كائن المشارك
   if (!user.participant) {
     user.participant = {
       _id: "000000000000000000000000",
@@ -27,10 +25,11 @@ const prepareSafeParticipant = (userDoc) => {
   
   const p = user.participant;
   const now = new Date().toISOString();
+  
+  // رابط صورة افتراضي (يمنع كراش NetworkImage)
+  const defaultImg = "https://placehold.co/400x400/png"; 
 
-  // ---------------------------------------------------
-  // أ. تعبئة بيانات المشارك الداخلية
-  // ---------------------------------------------------
+  // أ. تعبئة المشارك
   p.id = (p._id || "000000000000000000000000").toString();
   p.name = p.name || 'غير محدد';
   p.fullName = p.fullName || p.name || 'غير محدد';
@@ -38,23 +37,23 @@ const prepareSafeParticipant = (userDoc) => {
   
   p.phone = p.phone || '';
   p.mobile = p.mobile || '';
-  p.phoneNumber = p.phoneNumber || '';
   p.email = p.email || ''; 
 
   p.region = p.region || '';
   p.city = p.city || '';
   p.address = p.address || '';
   
-  p.image = p.image || '';
-  p.avatar = p.avatar || '';
-  p.photo = p.image || '';
+  // 🛑 إصلاح الصور (وضع رابط افتراضي بدلاً من الفراغ)
+  p.image = (p.image && p.image.length > 5) ? p.image : defaultImg;
+  p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
+  p.photo = p.image;
 
   p.gender = p.gender || 'male';
   p.age = p.age || 20;
   p.birthDate = p.birthDate || now;
   
-  p.balance = p.balance || 0;
-  p.points = p.points || 0;
+  p.balance = p.balance || 0.0;
+  p.points = p.points || 0.0;
   
   p.isVerified = true;
   p.isActive = true;
@@ -63,29 +62,22 @@ const prepareSafeParticipant = (userDoc) => {
   p.createdAt = p.createdAt || now;
   p.updatedAt = p.updatedAt || now;
 
-  // حفظ التعديلات في المشارك
   user.participant = p;
 
-  // ---------------------------------------------------
-  // ب. 🛑 النسخ للجذر (Root Injection) - الحل الحاسم 🛑
-  // ---------------------------------------------------
+  // ب. النسخ للجذر (Root Injection)
   user.id = user._id.toString();
-  
-  // نسخ الحقول المهمة للخارج (User Level)
   user.fullName = p.fullName;
   user.name = p.fullName;
   
   user.phone = p.phone;
   user.mobile = p.phone;
   
+  // نسخ الصور للجذر أيضاً
   user.image = p.image;
   user.photo = p.image;
   user.avatar = p.image;
   
   user.region = p.region;
-  user.city = p.city;
-  
-  // ضمان الإيميل في الجذر
   user.email = user.email || p.email || '';
 
   return user;
@@ -94,17 +86,15 @@ const prepareSafeParticipant = (userDoc) => {
 const createAndSendToken = (userDoc, statusCode, res) => {
   const token = signToken(userDoc._id);
 
-  // 🛑 نطبق التنظيف ونحفظ النتيجة في متغير جديد
+  // نستخدم المتغير الجديد للحفظ
   const safeUser = prepareSafeParticipant(userDoc);
-  
-  // إزالة كلمة المرور
   safeUser.password = undefined;
 
   res.status(statusCode).json({
     status: 'success',
     token,
     data: {
-      user: safeUser, // إرسال النسخة الآمنة
+      user: safeUser,
     },
   });
 };
@@ -138,7 +128,6 @@ export const getMe = catchAsync(async (req, res, next) => {
     return next(new AppError('المستخدم غير موجود.', 404));
   }
 
-  // 🛑 تطبيق التنظيف هنا أيضاً
   const safeUser = prepareSafeParticipant(currentUserDoc);
    
   res.status(200).json({
