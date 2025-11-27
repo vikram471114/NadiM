@@ -9,25 +9,37 @@ const signToken = (id) => {
   });
 };
 
+// دالة مساعدة لتجهيز المشارك الوهمي الكامل
+const prepareSafeParticipant = (user) => {
+  if (!user.participant) {
+    user.participant = {
+      _id: "000000000000000000000000",
+      userId: user._id,
+    };
+  }
+  
+  // ضمان وجود الحقول كنصوص فارغة لمنع الكراش
+  const p = user.participant;
+  p.name = p.name || 'غير محدد';
+  p.fullName = p.fullName || p.name || 'غير محدد';
+  p.phone = p.phone || '';
+  p.region = p.region || '';
+  p.email = p.email || '';
+  p.image = p.image || '';
+  p.avatar = p.avatar || '';
+  p.city = p.city || '';
+  
+  user.participant = p;
+  return user;
+};
+
 const createAndSendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
 
-  // Remove password from the output
   user.password = undefined;
-
-  // ✅ التعديل السحري هنا: إنشاء كائن مشارك وهمي مكتمل الحقول
-  if (!user.participant) {
-    user.participant = {
-      _id: "000000000000000000000000", // آيدي وهمي بصيغة Mongo
-      userId: user._id,
-      name: 'غير محدد',
-      fullName: 'غير محدد', // مهم للمودل
-      phone: '',            // نص فارغ يمنع الكراش (Not Null)
-      region: '',           // نص فارغ
-      email: '',            // احتياط
-      image: ''             // احتياط
-    };
-  }
+  
+  // ✅ استخدام الدالة الآمنة هنا
+  prepareSafeParticipant(user);
 
   res.status(statusCode).json({
     status: 'success',
@@ -41,21 +53,18 @@ const createAndSendToken = (user, statusCode, res) => {
 export const login = catchAsync(async (req, res, next) => {
   const { username, password } = req.body;
 
-  // 1) Check if username and password exist
   if (!username || !password) {
     return next(new AppError('يرجى تقديم اسم المستخدم وكلمة المرور', 400));
   }
 
-  // 2) Check if user exists && password is correct
   const user = await User.findOne({ username: username.toLowerCase() })
     .select('+password')
-    .populate('participant'); 
+    .populate('participant');
 
   if (!user || !(await user.correctPassword(password, user.password))) {
     return next(new AppError('اسم المستخدم أو كلمة المرور غير صحيحة', 401));
   }
 
-  // 3) If everything is ok, send token to client
   createAndSendToken(user, 200, res);
 });
 
@@ -63,28 +72,15 @@ export const logout = (req, res) => {
   res.status(200).json({ status: 'success', message: 'تم تسجيل الخروج بنجاح' });
 };
 
-// This function will be used by a middleware to get the currently logged-in user
 export const getMe = catchAsync(async (req, res, next) => {
-  // We assume that a previous middleware has put the user id on req.user
   const currentUser = await User.findById(req.user.id).populate('participant');
 
   if (!currentUser) {
     return next(new AppError('المستخدم غير موجود.', 404));
   }
 
-  // ✅ التعديل السحري هنا أيضاً لحماية الـ Auto Login
-  if (!currentUser.participant) {
-    currentUser.participant = {
-      _id: "000000000000000000000000",
-      userId: currentUser._id,
-      name: 'غير محدد',
-      fullName: 'غير محدد',
-      phone: '',  // القيم الفارغة هي مفتاح الحل
-      region: '',
-      email: '',
-      image: ''
-    };
-  }
+  // ✅ استخدام الدالة الآمنة هنا أيضاً (مهم جداً عند إعادة فتح التطبيق)
+  prepareSafeParticipant(currentUser);
    
   res.status(200).json({
     status: 'success',
