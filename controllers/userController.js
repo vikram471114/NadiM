@@ -6,7 +6,7 @@ import AppError from '../utils/AppError.js';
 import * as factory from '../utils/handlerFactory.js';
 
 // ============================================================
-// ✅ دالة التنظيف (مع إرسال الأرقام كأرقام حقيقية)
+// ✅ دالة التنظيف (مع الحفاظ على الأرقام كأرقام)
 // ============================================================
 const sanitizeUser = (userDoc) => {
   let user = userDoc.toObject ? userDoc.toObject() : userDoc;
@@ -40,11 +40,11 @@ const sanitizeUser = (userDoc) => {
   p.avatar = (p.avatar && p.avatar.length > 5) ? p.avatar : defaultImg;
   p.photo = p.image;
 
-  // 3. 🛑 تصحيح الأرقام (إرسالها كـ int وليس String) 🛑
-  // هذا سيحل مشكلة type String is not subtype of int
-  p.age = Number(p.age) || 20;          // إرسال رقم 20
-  p.balance = Number(p.balance) || 0;   // إرسال رقم 0
-  p.points = Number(p.points) || 0;     // إرسال رقم 0
+  // 3. ✅ الأرقام كأرقام (Int/Double) وليس نصوص
+  // هذا يحل مشكلة: type String is not subtype of Int
+  p.age = Number(p.age) || 20;
+  p.balance = Number(p.balance) || 0;
+  p.points = Number(p.points) || 0;
   
   p.gender = p.gender || 'male';
   p.isVerified = true;
@@ -60,7 +60,7 @@ const sanitizeUser = (userDoc) => {
 
   user.participant = p;
 
-  // 4. النسخ للجذر (مع الأرقام الصحيحة)
+  // 4. النسخ للجذر (Root Injection)
   user.id = user._id.toString();
   user.fullName = p.fullName;
   user.name = p.fullName;
@@ -71,7 +71,7 @@ const sanitizeUser = (userDoc) => {
   user.avatar = p.image;
   user.email = user.email || p.email || '';
   
-  // نسخ الأرقام كأرقام
+  // نسخ الأرقام للجذر أيضاً
   user.age = p.age;
   user.balance = p.balance;
   user.points = p.points;
@@ -95,11 +95,13 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
     res.status(200).json({
         status: 'success',
         results: users.length,
-        // إرسال المصفوفة مباشرة في data
-        data: users, 
         
-        // مفاتيح احتياطية
-        users: users
+        // 🛑 العودة للهيكلية الصحيحة (Wrapper) 🛑
+        // التطبيق يتوقع: json['data']['data']
+        // هذا الهيكل يحل مشكلة "of index"
+        data: {
+            data: users 
+        }
     });
 });
 
@@ -110,7 +112,10 @@ export const getUser = catchAsync(async (req, res, next) => {
     
     res.status(200).json({
         status: 'success',
-        data: sanitizeUser(doc)
+        // هيكلية المستخدم الفردي
+        data: { 
+            data: sanitizeUser(doc) 
+        }
     });
 });
 
