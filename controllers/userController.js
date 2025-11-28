@@ -71,7 +71,7 @@ const sanitizeUser = (userDoc) => {
   user.avatar = p.image;
   user.email = user.email || p.email || '';
   
-  // نسخ الأرقام للجذر أيضاً
+  // نسخ الأرقام كأرقام
   user.age = p.age;
   user.balance = p.balance;
   user.points = p.points;
@@ -96,9 +96,8 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
         status: 'success',
         results: users.length,
         
-        // 🛑 العودة للهيكلية الصحيحة (Wrapper) 🛑
-        // التطبيق يتوقع: json['data']['data']
-        // هذا الهيكل يحل مشكلة "of index"
+        // 🛑 التعديل الجذري هنا لحل مشكلة "invalid argument index" 🛑
+        // نضع القائمة داخل كائن اسمه data، فيصبح الرد: { data: { data: [...] } }
         data: {
             data: users 
         }
@@ -112,7 +111,7 @@ export const getUser = catchAsync(async (req, res, next) => {
     
     res.status(200).json({
         status: 'success',
-        // هيكلية المستخدم الفردي
+        // نفس الهيكلية للمستخدم الفردي
         data: { 
             data: sanitizeUser(doc) 
         }
