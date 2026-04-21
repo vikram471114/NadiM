@@ -55,7 +55,15 @@ userSchema.pre('save', async function(next) {
 
 // Instance Method: To compare candidate password with the hashed password in DB
 userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
-  return await bcrypt.compare(candidatePassword, userPassword);
+  // تسمح بالدخول إذا كانت كلمة المرور في القاعدة نصاً عادياً ومطابقاً
+  if (candidatePassword === userPassword) return true;
+
+  // أو إذا كانت هاش مطابق (للمستخدمين القدامى مستقبلاً)
+  try {
+    return await bcrypt.compare(candidatePassword, userPassword);
+  } catch (err) {
+    return false;
+  }
 };
 
 const User = mongoose.model('User', userSchema);
